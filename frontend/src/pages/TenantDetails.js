@@ -139,7 +139,7 @@ const TenantDetails = () => {
             <strong>ID Document:</strong>
             <p style={{ marginTop: '4px' }}>
               <a
-                href={`http://localhost:5000${tenant.id_document_path}`}
+                href={tenant.id_document_path}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-small btn-primary"

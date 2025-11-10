@@ -4,6 +4,93 @@ const db = require('../database/db');
 const paymentScheduleGenerator = require('../utils/paymentScheduleGenerator');
 const { optionalAuth, authenticate, checkEditPermission } = require('../middleware/auth');
 
+// Get current month rentals
+router.get('/current-month', async (req, res) => {
+  try {
+    const { building_id } = req.query;
+
+    let query = `
+      SELECT ra.*,
+        t.name as tenant_name,
+        t.id_number as tenant_id_number,
+        t.nationality as tenant_nationality,
+        t.country_code || ' ' || t.contact_number as tenant_contact,
+        t.email as tenant_email,
+        f.flat_number,
+        b.name as building_name,
+        b.id as building_id
+       FROM rental_agreements ra
+       JOIN tenants t ON ra.tenant_id = t.id
+       JOIN flats f ON ra.flat_id = f.id
+       JOIN buildings b ON f.building_id = b.id
+       WHERE ra.is_active = TRUE
+         AND ra.start_date <= DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day'
+         AND (ra.end_date >= DATE_TRUNC('month', CURRENT_DATE) OR ra.end_date IS NULL)
+    `;
+
+    const params = [];
+
+    if (building_id) {
+      params.push(building_id);
+      query += ` AND b.id = $${params.length}`;
+    }
+
+    query += ' ORDER BY ra.start_date DESC';
+
+    const result = await db.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch current month rentals' });
+  }
+});
+
+// Get latest rental agreement
+router.get('/latest', async (req, res) => {
+  try {
+    const { building_id } = req.query;
+
+    let query = `
+      SELECT ra.*,
+        t.name as tenant_name,
+        t.id_number as tenant_id_number,
+        t.nationality as tenant_nationality,
+        t.country_code as tenant_country_code,
+        t.contact_number as tenant_contact_number,
+        t.email as tenant_email,
+        f.flat_number,
+        b.name as building_name,
+        b.address as building_address,
+        b.id as building_id
+       FROM rental_agreements ra
+       JOIN tenants t ON ra.tenant_id = t.id
+       JOIN flats f ON ra.flat_id = f.id
+       JOIN buildings b ON f.building_id = b.id
+       WHERE DATE(ra.created_at) = CURRENT_DATE
+    `;
+
+    const params = [];
+
+    if (building_id) {
+      params.push(building_id);
+      query += ` AND b.id = $${params.length}`;
+    }
+
+    query += ' ORDER BY ra.created_at DESC LIMIT 1';
+
+    const result = await db.query(query, params);
+
+    if (result.rows.length === 0) {
+      return res.json(null);
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch latest rental agreement' });
+  }
+});
+
 // Get all rental agreements
 router.get('/', async (req, res) => {
   try {
@@ -80,6 +167,7 @@ router.get('/:id', async (req, res) => {
 
 // Create new rental agreement
 router.post('/', optionalAuth, async (req, res) => {
+  const client = await db.pool.connect();
   try {
     const {
       tenant_id,
@@ -111,26 +199,26 @@ router.post('/', optionalAuth, async (req, res) => {
     }
 
     // Start transaction
-    await db.query('BEGIN');
+    await client.query('BEGIN');
 
     // Check if flat is already occupied
-    const flatCheck = await db.query(
+    const flatCheck = await client.query(
       'SELECT is_occupied FROM flats WHERE id = $1',
       [flat_id]
     );
 
     if (flatCheck.rows.length === 0) {
-      await db.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Flat not found' });
     }
 
     if (flatCheck.rows[0].is_occupied) {
-      await db.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Flat is already occupied' });
     }
 
     // Create rental agreement (created_by and can_edit_until are set by trigger)
-    const result = await db.query(
+    const result = await client.query(
       `INSERT INTO rental_agreements
         (tenant_id, flat_id, building_id, start_date, end_date, duration_value,
          duration_unit, rental_amount, rental_period, advance_amount, is_active, created_by)
@@ -141,14 +229,14 @@ router.post('/', optionalAuth, async (req, res) => {
     );
 
     // Mark flat as occupied
-    await db.query(
+    await client.query(
       'UPDATE flats SET is_occupied = true WHERE id = $1',
       [flat_id]
     );
 
     // Record advance payment if provided
     if (advance_amount && advance_amount > 0) {
-      await db.query(
+      await client.query(
         `INSERT INTO payments (rental_agreement_id, tenant_id, building_id, payment_date,
                                amount, payment_type, remarks)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -161,7 +249,7 @@ router.post('/', optionalAuth, async (req, res) => {
 
     // Insert schedules into database
     for (const schedule of schedules) {
-      await db.query(
+      await client.query(
         `INSERT INTO payment_schedules
           (rental_agreement_id, contract_number, due_date, billing_period_start,
            billing_period_end, amount_due, amount_paid, balance, status,
@@ -184,13 +272,15 @@ router.post('/', optionalAuth, async (req, res) => {
       );
     }
 
-    await db.query('COMMIT');
+    await client.query('COMMIT');
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'Failed to create rental agreement' });
+  } finally {
+    client.release();
   }
 });
 
@@ -223,6 +313,7 @@ router.put('/:id', async (req, res) => {
 
 // End rental agreement (vacate flat)
 router.post('/:id/end', async (req, res) => {
+  const client = await db.pool.connect();
   try {
     const { id } = req.params;
     const { end_date } = req.body;
@@ -230,23 +321,23 @@ router.post('/:id/end', async (req, res) => {
     const actualEndDate = end_date || new Date().toISOString().split('T')[0];
 
     // Start transaction
-    await db.query('BEGIN');
+    await client.query('BEGIN');
 
     // Get rental agreement details
-    const rentalResult = await db.query(
+    const rentalResult = await client.query(
       'SELECT flat_id FROM rental_agreements WHERE id = $1',
       [id]
     );
 
     if (rentalResult.rows.length === 0) {
-      await db.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
 
     const flatId = rentalResult.rows[0].flat_id;
 
     // Update rental agreement
-    await db.query(
+    await client.query(
       `UPDATE rental_agreements
        SET is_active = false, end_date = $1
        WHERE id = $2`,
@@ -254,58 +345,63 @@ router.post('/:id/end', async (req, res) => {
     );
 
     // Mark flat as vacant
-    await db.query(
+    await client.query(
       'UPDATE flats SET is_occupied = false WHERE id = $1',
       [flatId]
     );
 
-    await db.query('COMMIT');
+    await client.query('COMMIT');
 
     res.json({ message: 'Rental agreement ended successfully' });
   } catch (err) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'Failed to end rental agreement' });
+  } finally {
+    client.release();
   }
 });
 
 // Delete rental agreement
 router.delete('/:id', async (req, res) => {
+  const client = await db.pool.connect();
   try {
     const { id } = req.params;
 
     // Start transaction
-    await db.query('BEGIN');
+    await client.query('BEGIN');
 
     // Get flat_id before deletion
-    const rentalResult = await db.query(
+    const rentalResult = await client.query(
       'SELECT flat_id FROM rental_agreements WHERE id = $1',
       [id]
     );
 
     if (rentalResult.rows.length === 0) {
-      await db.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
 
     const flatId = rentalResult.rows[0].flat_id;
 
     // Delete rental agreement (payments will be cascaded)
-    await db.query('DELETE FROM rental_agreements WHERE id = $1', [id]);
+    await client.query('DELETE FROM rental_agreements WHERE id = $1', [id]);
 
     // Mark flat as vacant
-    await db.query(
+    await client.query(
       'UPDATE flats SET is_occupied = false WHERE id = $1',
       [flatId]
     );
 
-    await db.query('COMMIT');
+    await client.query('COMMIT');
 
     res.json({ message: 'Rental agreement deleted successfully' });
   } catch (err) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'Failed to delete rental agreement' });
+  } finally {
+    client.release();
   }
 });
 

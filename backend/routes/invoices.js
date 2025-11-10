@@ -103,6 +103,7 @@ router.get('/:id', async (req, res) => {
 
 // Create new invoice and generate PDF
 router.post('/', async (req, res) => {
+  const client = await db.pool.connect();
   try {
     const {
       rental_agreement_id,
@@ -127,16 +128,16 @@ router.post('/', async (req, res) => {
     }
 
     // Start transaction
-    await db.query('BEGIN');
+    await client.query('BEGIN');
 
     // Get contract number
-    const contractResult = await db.query(
+    const contractResult = await client.query(
       'SELECT contract_number FROM rental_agreements WHERE id = $1',
       [rental_agreement_id]
     );
 
     if (contractResult.rows.length === 0) {
-      await db.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
 
@@ -152,7 +153,7 @@ router.post('/', async (req, res) => {
     due_date.setDate(due_date.getDate() + 7);
 
     // Create invoice
-    const invoiceResult = await db.query(
+    const invoiceResult = await client.query(
       `INSERT INTO invoices
         (contract_number, rental_agreement_id, tenant_id, building_id, flat_id,
          invoice_date, due_date, billing_period_start, billing_period_end,
@@ -173,7 +174,7 @@ router.post('/', async (req, res) => {
     const invoice = invoiceResult.rows[0];
 
     // Get full invoice data for PDF generation
-    const fullInvoiceResult = await db.query(
+    const fullInvoiceResult = await client.query(
       `SELECT i.*,
         t.name as tenant_name,
         t.id_number as tenant_id_number,
@@ -198,7 +199,7 @@ router.post('/', async (req, res) => {
     const fullInvoice = fullInvoiceResult.rows[0];
 
     // Get recent payments (last 4)
-    const recentPaymentsResult = await db.query(
+    const recentPaymentsResult = await client.query(
       `SELECT * FROM payments
        WHERE tenant_id = $1 AND rental_agreement_id = $2 AND payment_status = 'completed'
        ORDER BY payment_date DESC LIMIT 4`,
@@ -232,7 +233,7 @@ router.post('/', async (req, res) => {
       );
 
       // Update invoice with PDF path
-      await db.query(
+      await client.query(
         'UPDATE invoices SET pdf_path = $1 WHERE id = $2',
         [pdfPath, invoice.id]
       );
@@ -243,13 +244,15 @@ router.post('/', async (req, res) => {
       // Continue even if PDF generation fails
     }
 
-    await db.query('COMMIT');
+    await client.query('COMMIT');
 
     res.status(201).json(invoice);
   } catch (err) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'Failed to create invoice' });
+  } finally {
+    client.release();
   }
 });
 

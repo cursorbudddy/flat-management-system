@@ -6,7 +6,22 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [stats, setStats] = useState(null);
+  const [stats, setStats] = useState({
+    total_buildings: 0,
+    total_flats: 0,
+    occupied_flats: 0,
+    vacant_flats: 0,
+    active_tenants: 0,
+    today_income: 0,
+    month_income: 0,
+    today_expense: 0,
+    month_expense: 0,
+    pending_payments: 0,
+    today_net: 0,
+    month_net: 0,
+    recent_payments: [],
+    recent_expenses: []
+  });
   const [trends, setTrends] = useState([]);
   const [buildings, setBuildings] = useState([]);
   const [selectedBuilding, setSelectedBuilding] = useState('');
