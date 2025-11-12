@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_SERVER_URL = API_BASE_URL.replace('/api', '');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -8,6 +9,12 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Helper function to get full file URL
+export const getFileUrl = (filePath) => {
+  if (!filePath) return '';
+  return `${API_SERVER_URL}${filePath}`;
+};
 
 // Request interceptor to add token to requests
 api.interceptors.request.use(
@@ -148,5 +155,8 @@ export const rejectExpense = (id, reason) => api.post(`/expenses/${id}/reject`, 
 // Reports (Admin only)
 export const generateReport = (data) => api.post('/reports/generate', data, { responseType: 'blob' });
 export const previewReport = (params) => api.get('/reports/preview', { params });
+
+// Export API configuration
+export { API_BASE_URL, API_SERVER_URL };
 
 export default api;

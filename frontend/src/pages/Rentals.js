@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { getCurrentMonthRentals } from '../api';
 import { useBuilding } from '../context/BuildingContext';
 import BuildingSelector from '../components/BuildingSelector';
 import { FaFileContract, FaDollarSign, FaCheckCircle, FaClock } from 'react-icons/fa';
@@ -45,7 +45,7 @@ const Rentals = () => {
       setError(null);
 
       const params = selectedBuilding ? { building_id: selectedBuilding.id } : {};
-      const response = await axios.get('http://localhost:5000/api/rentals/current-month', { params });
+      const response = await getCurrentMonthRentals(params);
 
       setRentals(response.data);
 

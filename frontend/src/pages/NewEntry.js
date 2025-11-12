@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getBuildings, getFlatsByBuilding, createTenant, createRental } from '../api';
+import { getBuildings, getFlatsByBuilding, createTenant, createRental, checkTenantId } from '../api';
 import { FaUser, FaSave, FaTimes } from 'react-icons/fa';
 import CountryCodeSelector from '../components/CountryCodeSelector';
+import NationalityDropdown from '../components/NationalityDropdown';
+import IdCheckModal from '../components/IdCheckModal';
+import CustomDurationPicker from '../components/CustomDurationPicker';
 
 const NewEntry = () => {
   const navigate = useNavigate();
@@ -11,6 +14,10 @@ const NewEntry = () => {
   const [loading, setLoading] = useState(false);
   const [selectedBuildingId, setSelectedBuildingId] = useState('');
 
+  // ID Check Modal State
+  const [showIdModal, setShowIdModal] = useState(false);
+  const [idModalData, setIdModalData] = useState(null);
+
   const [formData, setFormData] = useState({
     // Tenant Details
     name: '',
@@ -18,15 +25,14 @@ const NewEntry = () => {
     nationality: '',
     country_code: '+968',
     contact_number: '',
-    email: '',
     id_document: null,
 
     // Rental Details
     building_id: '',
     flat_id: '',
-    start_date: new Date().toISOString().split('T')[0],
-    duration_value: '',
-    duration_unit: 'months',
+    start_date: new Date(),
+    end_date: null,
+    duration_days: 0,
     rental_amount: '',
     rental_period: 'month',
     advance_amount: ''
@@ -82,6 +88,13 @@ const NewEntry = () => {
     }
   };
 
+  const handleNationalityChange = (value) => {
+    setFormData(prev => ({
+      ...prev,
+      nationality: value
+    }));
+  };
+
   const handleBuildingChange = (e) => {
     const buildingId = e.target.value;
     setSelectedBuildingId(buildingId);
@@ -89,6 +102,68 @@ const NewEntry = () => {
       ...prev,
       building_id: buildingId,
       flat_id: ''
+    }));
+  };
+
+  // ID Number Validation
+  const handleIdBlur = async (e) => {
+    const idNumber = e.target.value;
+    if (!idNumber) return;
+
+    try {
+      const response = await checkTenantId(idNumber);
+      if (response.data.exists) {
+        setIdModalData(response.data);
+        setShowIdModal(true);
+      }
+    } catch (error) {
+      // ID is unique, continue normally
+      console.log('ID is unique');
+    }
+  };
+
+  // Handle pre-fill from modal
+  const handleIdCheckConfirm = (tenantData) => {
+    setFormData(prev => ({
+      ...prev,
+      name: tenantData.name,
+      nationality: tenantData.nationality,
+      country_code: tenantData.country_code || '+968',
+      contact_number: tenantData.contact_number,
+    }));
+    setShowIdModal(false);
+    setIdModalData(null);
+  };
+
+  const handleIdCheckCancel = () => {
+    setShowIdModal(false);
+    setIdModalData(null);
+    // Optionally clear ID number
+    setFormData(prev => ({
+      ...prev,
+      id_number: ''
+    }));
+  };
+
+  // Custom Duration Picker Handlers
+  const handleStartDateChange = (date) => {
+    setFormData(prev => ({
+      ...prev,
+      start_date: date
+    }));
+  };
+
+  const handleEndDateChange = (date) => {
+    setFormData(prev => ({
+      ...prev,
+      end_date: date
+    }));
+  };
+
+  const handleDurationChange = (days) => {
+    setFormData(prev => ({
+      ...prev,
+      duration_days: days
     }));
   };
 
@@ -106,8 +181,13 @@ const NewEntry = () => {
       return;
     }
 
-    if (!formData.duration_value || !formData.rental_amount) {
-      alert('Please fill in rental duration and amount');
+    if (!formData.end_date || formData.duration_days === 0) {
+      alert('Please select rental start and end dates');
+      return;
+    }
+
+    if (!formData.rental_amount) {
+      alert('Please fill in rental amount');
       return;
     }
 
@@ -121,7 +201,6 @@ const NewEntry = () => {
       tenantFormData.append('nationality', formData.nationality);
       tenantFormData.append('country_code', formData.country_code);
       tenantFormData.append('contact_number', formData.contact_number);
-      tenantFormData.append('email', formData.email);
       if (formData.id_document) {
         tenantFormData.append('id_document', formData.id_document);
       }
@@ -134,9 +213,9 @@ const NewEntry = () => {
         tenant_id: tenantId,
         flat_id: parseInt(formData.flat_id),
         building_id: parseInt(formData.building_id),
-        start_date: formData.start_date,
-        duration_value: parseInt(formData.duration_value),
-        duration_unit: formData.duration_unit,
+        start_date: formData.start_date.toISOString().split('T')[0],
+        duration_value: formData.duration_days,
+        duration_unit: 'days',
         rental_amount: parseFloat(formData.rental_amount),
         rental_period: formData.rental_period,
         advance_amount: formData.advance_amount ? parseFloat(formData.advance_amount) : 0
@@ -159,6 +238,15 @@ const NewEntry = () => {
       <div className="page-header">
         <h1 className="page-title">New Tenant Entry</h1>
       </div>
+
+      {/* ID Check Modal */}
+      <IdCheckModal
+        isOpen={showIdModal}
+        onClose={handleIdCheckCancel}
+        tenantData={idModalData}
+        onConfirm={handleIdCheckConfirm}
+        onCancel={handleIdCheckCancel}
+      />
 
       <form onSubmit={handleSubmit}>
         {/* Tenant Information Section */}
@@ -186,20 +274,21 @@ const NewEntry = () => {
                 className="form-input"
                 value={formData.id_number}
                 onChange={handleChange}
+                onBlur={handleIdBlur}
                 required
               />
+              <small style={{ color: '#666', fontSize: '12px' }}>
+                ID will be checked for duplicates
+              </small>
             </div>
           </div>
 
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Nationality</label>
-              <input
-                type="text"
-                name="nationality"
-                className="form-input"
+              <NationalityDropdown
                 value={formData.nationality}
-                onChange={handleChange}
+                onChange={handleNationalityChange}
               />
             </div>
 
@@ -225,17 +314,6 @@ const NewEntry = () => {
           </div>
 
           <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Email</label>
-              <input
-                type="email"
-                name="email"
-                className="form-input"
-                value={formData.email}
-                onChange={handleChange}
-              />
-            </div>
-
             <div className="form-group">
               <label className="form-label">Upload ID Document</label>
               <input
@@ -300,46 +378,14 @@ const NewEntry = () => {
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label required">Start Date</label>
-              <input
-                type="date"
-                name="start_date"
-                className="form-input"
-                value={formData.start_date}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label required">Duration</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  type="number"
-                  name="duration_value"
-                  className="form-input"
-                  value={formData.duration_value}
-                  onChange={handleChange}
-                  min="1"
-                  required
-                  style={{ flex: 2 }}
-                  placeholder="Enter duration"
-                />
-                <select
-                  name="duration_unit"
-                  className="form-select"
-                  value={formData.duration_unit}
-                  onChange={handleChange}
-                  style={{ flex: 1 }}
-                >
-                  <option value="days">Days</option>
-                  <option value="months">Months</option>
-                </select>
-              </div>
-            </div>
-          </div>
+          {/* Custom Duration Picker */}
+          <CustomDurationPicker
+            startDate={formData.start_date}
+            endDate={formData.end_date}
+            onStartDateChange={handleStartDateChange}
+            onEndDateChange={handleEndDateChange}
+            onDurationChange={handleDurationChange}
+          />
 
           <div className="form-row">
             <div className="form-group">

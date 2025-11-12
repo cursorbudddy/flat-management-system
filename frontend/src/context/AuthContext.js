@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api';
 
 const AuthContext = createContext(null);
 
@@ -19,18 +19,16 @@ export const AuthProvider = ({ children }) => {
   // Configure axios defaults
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       // Fetch user info on mount if token exists
       fetchCurrentUser();
     } else {
-      delete axios.defaults.headers.common['Authorization'];
       setLoading(false);
     }
   }, [token]);
 
   const fetchCurrentUser = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/auth/me');
+      const response = await api.get('/auth/me');
       setUser(response.data.user);
     } catch (error) {
       console.error('Failed to fetch user:', error);
@@ -43,7 +41,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
+      const response = await api.post('/auth/login', {
         username,
         password
       });
@@ -54,9 +52,6 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('token', newToken);
       setToken(newToken);
       setUser(userData);
-
-      // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
 
       return { success: true };
     } catch (error) {
@@ -73,14 +68,11 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
-
-    // Remove axios default header
-    delete axios.defaults.headers.common['Authorization'];
   };
 
   const changePassword = async (currentPassword, newPassword) => {
     try {
-      await axios.post('http://localhost:5000/api/auth/change-password', {
+      await api.post('/auth/change-password', {
         currentPassword,
         newPassword
       });

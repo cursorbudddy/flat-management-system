@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getTenant, getTenantPayments, getTenantRentals } from '../api';
+import { getTenant, getTenantPayments, getTenantRentals, getFileUrl } from '../api';
 import { FaArrowLeft, FaUser, FaBuilding, FaMoneyBillWave, FaCalendar } from 'react-icons/fa';
 
 const TenantDetails = () => {
@@ -139,7 +139,7 @@ const TenantDetails = () => {
             <strong>ID Document:</strong>
             <p style={{ marginTop: '4px' }}>
               <a
-                href={`http://localhost:5000${tenant.id_document_path}`}
+                href={getFileUrl(tenant.id_document_path)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-small btn-primary"

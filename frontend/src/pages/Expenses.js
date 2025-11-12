@@ -1,21 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { getExpenses, createExpense, getExpenseCategories, getBuildings } from '../api';
+import { getExpenses, createExpense, getExpenseCategories, getBuildings, getFlatsByBuilding, getExpenseTrendsByCategory } from '../api';
 import { FaPlus, FaFileInvoiceDollar } from 'react-icons/fa';
+import { useBuilding } from '../context/BuildingContext';
+import BuildingSelector from '../components/BuildingSelector';
+import CategoryTrendChart from '../components/CategoryTrendChart';
 
 const Expenses = () => {
+  // BuildingContext integration
+  const { buildings: contextBuildings, getEffectiveBuilding, setTabBuilding } = useBuilding();
+  const [selectedBuilding, setSelectedBuilding] = useState(null);
+
   const [expenses, setExpenses] = useState([]);
   const [buildings, setBuildings] = useState([]);
+  const [flats, setFlats] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [trendData, setTrendData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [filters, setFilters] = useState({
     building_id: '',
+    flat_id: '',
     category: '',
     start_date: '',
     end_date: ''
   });
   const [formData, setFormData] = useState({
     building_id: '',
+    flat_id: '',
     expense_date: new Date().toISOString().split('T')[0],
     category: '',
     description: '',
@@ -28,9 +39,36 @@ const Expenses = () => {
     fetchInitialData();
   }, []);
 
+  // Initialize with effective building from context
+  useEffect(() => {
+    if (contextBuildings.length > 0) {
+      const effectiveBuilding = getEffectiveBuilding('expenses');
+      if (effectiveBuilding) {
+        setSelectedBuilding(effectiveBuilding);
+      }
+    }
+  }, [contextBuildings, getEffectiveBuilding]);
+
+  // Fetch flats when building changes
+  useEffect(() => {
+    if (selectedBuilding) {
+      fetchFlats(selectedBuilding.id);
+      fetchTrends();
+    } else {
+      setFlats([]);
+    }
+  }, [selectedBuilding]);
+
   useEffect(() => {
     fetchExpenses();
   }, [filters]);
+
+  // Fetch trends when filters change
+  useEffect(() => {
+    if (filters.start_date && filters.end_date) {
+      fetchTrends();
+    }
+  }, [filters.start_date, filters.end_date, filters.building_id]);
 
   const fetchInitialData = async () => {
     try {
@@ -46,11 +84,52 @@ const Expenses = () => {
     }
   };
 
+  const fetchFlats = async (buildingId) => {
+    try {
+      const response = await getFlatsByBuilding(buildingId);
+      setFlats(response.data || []);
+    } catch (error) {
+      console.error('Error fetching flats:', error);
+      setFlats([]);
+    }
+  };
+
+  const fetchTrends = async () => {
+    try {
+      const params = {};
+      if (selectedBuilding) params.building_id = selectedBuilding.id;
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
+
+      // Only fetch if we have date range
+      if (params.start_date && params.end_date) {
+        const response = await getExpenseTrendsByCategory(params);
+        setTrendData(response.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching expense trends:', error);
+      setTrendData([]);
+    }
+  };
+
+  const handleBuildingSelect = (building) => {
+    setSelectedBuilding(building);
+    setTabBuilding('expenses', building);
+
+    // Update filters
+    setFilters(prev => ({
+      ...prev,
+      building_id: building ? building.id : '',
+      flat_id: '' // Reset flat when building changes
+    }));
+  };
+
   const fetchExpenses = async () => {
     try {
       setLoading(true);
       const params = {};
       if (filters.building_id) params.building_id = filters.building_id;
+      if (filters.flat_id) params.flat_id = filters.flat_id;
       if (filters.category) params.category = filters.category;
       if (filters.start_date) params.start_date = filters.start_date;
       if (filters.end_date) params.end_date = filters.end_date;
@@ -68,6 +147,7 @@ const Expenses = () => {
   const handleOpenModal = () => {
     setFormData({
       building_id: '',
+      flat_id: '',
       expense_date: new Date().toISOString().split('T')[0],
       category: '',
       description: '',
@@ -76,6 +156,22 @@ const Expenses = () => {
       remarks: ''
     });
     setShowModal(true);
+  };
+
+  const handleFormBuildingChange = (e) => {
+    const buildingId = e.target.value;
+    setFormData(prev => ({
+      ...prev,
+      building_id: buildingId,
+      flat_id: '' // Reset flat when building changes
+    }));
+
+    // Fetch flats for the selected building
+    if (buildingId) {
+      fetchFlats(buildingId);
+    } else {
+      setFlats([]);
+    }
   };
 
   const handleCloseModal = () => {
@@ -101,6 +197,7 @@ const Expenses = () => {
     try {
       const expenseData = {
         building_id: formData.building_id || null,
+        flat_id: formData.flat_id || null,
         expense_date: formData.expense_date,
         category: formData.category,
         description: formData.description,
@@ -155,6 +252,13 @@ const Expenses = () => {
         </button>
       </div>
 
+      {/* Building Selector */}
+      <BuildingSelector
+        buildings={contextBuildings}
+        selectedBuilding={selectedBuilding}
+        onSelectBuilding={handleBuildingSelect}
+      />
+
       {/* Summary */}
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
         <div className="stat-card">
@@ -174,13 +278,31 @@ const Expenses = () => {
           <select
             className="form-select"
             value={filters.building_id}
-            onChange={(e) => setFilters(prev => ({ ...prev, building_id: e.target.value }))}
+            onChange={(e) => setFilters(prev => ({ ...prev, building_id: e.target.value, flat_id: '' }))}
             style={{ width: '200px' }}
           >
             <option value="">All Buildings</option>
             {buildings.map((building) => (
               <option key={building.id} value={building.id}>
                 {building.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label className="filter-label">Flat</label>
+          <select
+            className="form-select"
+            value={filters.flat_id}
+            onChange={(e) => setFilters(prev => ({ ...prev, flat_id: e.target.value }))}
+            style={{ width: '180px' }}
+            disabled={!selectedBuilding}
+          >
+            <option value="">All Flats</option>
+            {flats.map((flat) => (
+              <option key={flat.id} value={flat.id}>
+                Flat {flat.flat_number}
               </option>
             ))}
           </select>
@@ -225,16 +347,26 @@ const Expenses = () => {
           />
         </div>
 
-        {(filters.building_id || filters.category || filters.start_date || filters.end_date) && (
+        {(filters.building_id || filters.flat_id || filters.category || filters.start_date || filters.end_date) && (
           <button
             className="btn btn-secondary btn-small"
-            onClick={() => setFilters({ building_id: '', category: '', start_date: '', end_date: '' })}
+            onClick={() => setFilters({ building_id: '', flat_id: '', category: '', start_date: '', end_date: '' })}
             style={{ marginTop: 'auto' }}
           >
             Clear Filters
           </button>
         )}
       </div>
+
+      {/* Category Trend Chart */}
+      {trendData.length > 0 && (
+        <div style={{ marginBottom: '24px' }}>
+          <CategoryTrendChart
+            data={trendData}
+            title="Expense Trends by Category"
+          />
+        </div>
+      )}
 
       {/* Expenses Table */}
       {expenses.length === 0 ? (
@@ -256,6 +388,7 @@ const Expenses = () => {
                 <th>Category</th>
                 <th>Description</th>
                 <th>Building</th>
+                <th>Flat</th>
                 <th>Amount</th>
                 <th>Method</th>
                 <th>Remarks</th>
@@ -270,6 +403,7 @@ const Expenses = () => {
                   </td>
                   <td>{expense.description || '-'}</td>
                   <td>{expense.building_name || 'General'}</td>
+                  <td>{expense.flat_number ? `Flat ${expense.flat_number}` : '-'}</td>
                   <td style={{ fontWeight: '600', color: '#dc3545' }}>
                     {formatCurrency(expense.amount)}
                   </td>
@@ -311,7 +445,7 @@ const Expenses = () => {
                     name="building_id"
                     className="form-select"
                     value={formData.building_id}
-                    onChange={handleChange}
+                    onChange={handleFormBuildingChange}
                   >
                     <option value="">General (Not building-specific)</option>
                     {buildings.map((building) => (
@@ -320,6 +454,31 @@ const Expenses = () => {
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Flat</label>
+                  <select
+                    name="flat_id"
+                    className="form-select"
+                    value={formData.flat_id}
+                    onChange={handleChange}
+                    disabled={!formData.building_id}
+                  >
+                    <option value="">Not flat-specific</option>
+                    {flats.map((flat) => (
+                      <option key={flat.id} value={flat.id}>
+                        Flat {flat.flat_number}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.building_id && flats.length === 0 && (
+                    <small style={{ color: '#666', fontSize: '12px' }}>
+                      No flats available in this building
+                    </small>
+                  )}
                 </div>
               </div>
 

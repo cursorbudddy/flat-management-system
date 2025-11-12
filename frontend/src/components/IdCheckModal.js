@@ -1,4 +1,5 @@
 import React from 'react';
+import { getFileUrl } from '../api';
 import './IdCheckModal.css';
 import { FaTimes, FaUser, FaHome, FaCalendar, FaDollarSign, FaIdCard } from 'react-icons/fa';
 
@@ -105,7 +106,7 @@ const IdCheckModal = ({ isOpen, onClose, tenantData, onConfirm, onCancel }) => {
               <h3>ID Document</h3>
               <div className="id-check-document-preview">
                 <img
-                  src={`http://localhost:5000${tenant.id_document_path}`}
+                  src={getFileUrl(tenant.id_document_path)}
                   alt="Tenant ID Document"
                   onError={(e) => {
                     e.target.style.display = 'none';
