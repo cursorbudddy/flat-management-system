@@ -3,84 +3,6 @@ const router = express.Router();
 const db = require('../database/db');
 const paymentScheduleGenerator = require('../utils/paymentScheduleGenerator');
 const { cacheHelper } = require('../database/redis');
-const { authenticate } = require('../middleware/auth');
-
-// Get overdue payments
-router.get('/overdue', authenticate, async (req, res) => {
-  try {
-    const { building_id } = req.query;
-
-    let query = `
-      SELECT ps.*,
-        t.name as tenant_name,
-        b.name as building_name,
-        f.flat_number,
-        ra.contract_number
-      FROM payment_schedules ps
-      JOIN rental_agreements ra ON ps.rental_agreement_id = ra.id
-      JOIN tenants t ON ra.tenant_id = t.id
-      JOIN flats f ON ra.flat_id = f.id
-      JOIN buildings b ON f.building_id = b.id
-      WHERE (ps.status = 'overdue' OR (ps.due_date < CURRENT_DATE AND ps.balance > 0))
-        AND ra.is_active = TRUE
-    `;
-
-    const params = [];
-
-    if (building_id) {
-      params.push(building_id);
-      query += ` AND b.id = $${params.length}`;
-    }
-
-    query += ' ORDER BY ps.due_date ASC';
-
-    const result = await db.query(query, params);
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch overdue payments' });
-  }
-});
-
-// Get upcoming payments
-router.get('/upcoming', authenticate, async (req, res) => {
-  try {
-    const { building_id, limit = 5 } = req.query;
-
-    let query = `
-      SELECT ps.*,
-        t.name as tenant_name,
-        b.name as building_name,
-        f.flat_number,
-        ra.contract_number
-      FROM payment_schedules ps
-      JOIN rental_agreements ra ON ps.rental_agreement_id = ra.id
-      JOIN tenants t ON ra.tenant_id = t.id
-      JOIN flats f ON ra.flat_id = f.id
-      JOIN buildings b ON f.building_id = b.id
-      WHERE ps.status = 'pending' AND ps.due_date >= CURRENT_DATE
-        AND ra.is_active = TRUE
-    `;
-
-    const params = [];
-
-    if (building_id) {
-      params.push(building_id);
-      query += ` AND b.id = $${params.length}`;
-    }
-
-    query += ' ORDER BY ps.due_date ASC';
-
-    params.push(limit);
-    query += ` LIMIT $${params.length}`;
-
-    const result = await db.query(query, params);
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch upcoming payments' });
-  }
-});
 
 // Get payment schedules for a rental agreement
 router.get('/:rentalId', async (req, res) => {
@@ -208,7 +130,6 @@ router.get('/pending/all', async (req, res) => {
 
 // Generate payment schedules for a rental agreement
 router.post('/:rentalId/generate', async (req, res) => {
-  const client = await db.pool.connect();
   try {
     const { rentalId } = req.params;
 
@@ -238,10 +159,10 @@ router.post('/:rentalId/generate', async (req, res) => {
     const schedules = paymentScheduleGenerator.generateSchedule(rental);
 
     // Insert schedules
-    await client.query('BEGIN');
+    await db.query('BEGIN');
 
     for (const schedule of schedules) {
-      await client.query(
+      await db.query(
         `INSERT INTO payment_schedules
           (rental_agreement_id, contract_number, due_date, billing_period_start,
            billing_period_end, amount_due, amount_paid, balance, status,
@@ -264,18 +185,16 @@ router.post('/:rentalId/generate', async (req, res) => {
       );
     }
 
-    await client.query('COMMIT');
+    await db.query('COMMIT');
 
     res.status(201).json({
       message: 'Payment schedules generated successfully',
       count: schedules.length
     });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await db.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'Failed to generate payment schedules' });
-  } finally {
-    client.release();
   }
 });
 
@@ -310,7 +229,6 @@ router.put('/:id', async (req, res) => {
 
 // Record payment for schedule (apply payment)
 router.post('/:id/payment', async (req, res) => {
-  const client = await db.pool.connect();
   try {
     const { id } = req.params;
     const { amount, payment_method, remarks } = req.body;
@@ -319,16 +237,16 @@ router.post('/:id/payment', async (req, res) => {
       return res.status(400).json({ error: 'Invalid payment amount' });
     }
 
-    await client.query('BEGIN');
+    await db.query('BEGIN');
 
     // Get schedule
-    const scheduleResult = await client.query(
+    const scheduleResult = await db.query(
       'SELECT * FROM payment_schedules WHERE id = $1',
       [id]
     );
 
     if (scheduleResult.rows.length === 0) {
-      await client.query('ROLLBACK');
+      await db.query('ROLLBACK');
       return res.status(404).json({ error: 'Payment schedule not found' });
     }
 
@@ -336,7 +254,7 @@ router.post('/:id/payment', async (req, res) => {
     const newAmountPaid = parseFloat(schedule.amount_paid) + parseFloat(amount);
 
     // Update schedule
-    await client.query(
+    await db.query(
       `UPDATE payment_schedules
        SET amount_paid = $1
        WHERE id = $2`,
@@ -344,7 +262,7 @@ router.post('/:id/payment', async (req, res) => {
     );
 
     // Create payment record
-    const paymentResult = await client.query(
+    const paymentResult = await db.query(
       `INSERT INTO payments
         (rental_agreement_id, contract_number, tenant_id, building_id,
          payment_date, amount, payment_type, payment_method, remarks,
@@ -366,12 +284,12 @@ router.post('/:id/payment', async (req, res) => {
     );
 
     // Update schedule payment_id
-    await client.query(
+    await db.query(
       'UPDATE payment_schedules SET payment_id = $1 WHERE id = $2',
       [paymentResult.rows[0].id, id]
     );
 
-    await client.query('COMMIT');
+    await db.query('COMMIT');
 
     // Invalidate cache
     await cacheHelper.invalidateOverdueCache();
@@ -382,11 +300,9 @@ router.post('/:id/payment', async (req, res) => {
       payment: paymentResult.rows[0]
     });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await db.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'Failed to record payment' });
-  } finally {
-    client.release();
   }
 });
 

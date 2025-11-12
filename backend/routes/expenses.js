@@ -3,51 +3,10 @@ const router = express.Router();
 const db = require('../database/db');
 const { authenticate, authorize, optionalAuth } = require('../middleware/auth');
 
-// Get expense trends by category
-router.get('/trends/category', async (req, res) => {
-  try {
-    const { building_id, start_date, end_date } = req.query;
-
-    let query = `
-      SELECT
-        e.category,
-        SUM(e.amount) as total_amount,
-        COUNT(*) as count
-      FROM expenses e
-      WHERE e.approval_status = 'approved'
-    `;
-
-    const params = [];
-
-    if (building_id) {
-      params.push(building_id);
-      query += ` AND e.building_id = $${params.length}`;
-    }
-
-    if (start_date) {
-      params.push(start_date);
-      query += ` AND e.expense_date >= $${params.length}`;
-    }
-
-    if (end_date) {
-      params.push(end_date);
-      query += ` AND e.expense_date <= $${params.length}`;
-    }
-
-    query += ' GROUP BY e.category ORDER BY total_amount DESC';
-
-    const result = await db.query(query, params);
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch expense trends' });
-  }
-});
-
 // Get all expenses
 router.get('/', optionalAuth, async (req, res) => {
   try {
-    const { start_date, end_date, building_id, flat_id, category, approval_status } = req.query;
+    const { start_date, end_date, building_id, category, approval_status } = req.query;
 
     let query = `
       SELECT e.*,
@@ -76,11 +35,6 @@ router.get('/', optionalAuth, async (req, res) => {
     if (building_id) {
       params.push(building_id);
       query += ` AND e.building_id = $${params.length}`;
-    }
-
-    if (flat_id) {
-      params.push(flat_id);
-      query += ` AND e.flat_id = $${params.length}`;
     }
 
     if (category) {

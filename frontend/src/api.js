@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -59,6 +59,7 @@ export const updateFlat = (id, data) => api.put(`/flats/${id}`, data);
 // Tenants
 export const getTenants = () => api.get('/tenants');
 export const getTenant = (id) => api.get(`/tenants/${id}`);
+export const checkTenantId = (idNumber) => api.get(`/tenants/check-id/${idNumber}`);
 export const getTenantPayments = (id, params) => api.get(`/tenants/${id}/payments`, { params });
 export const getTenantRentals = (id) => api.get(`/tenants/${id}/rentals`);
 export const createTenant = (formData) => api.post('/tenants', formData, {
@@ -72,6 +73,8 @@ export const deleteTenant = (id) => api.delete(`/tenants/${id}`);
 // Rental Agreements
 export const getRentals = (params) => api.get('/rentals', { params });
 export const getRental = (id) => api.get(`/rentals/${id}`);
+export const getCurrentMonthRentals = (params) => api.get('/rentals/current-month', { params });
+export const getLatestRental = () => api.get('/rentals/latest');
 export const createRental = (data) => api.post('/rentals', data);
 export const updateRental = (id, data) => api.put(`/rentals/${id}`, data);
 export const endRental = (id, data) => api.post(`/rentals/${id}/end`, data);
@@ -91,6 +94,7 @@ export const getExpenses = (params) => api.get('/expenses', { params });
 export const getExpense = (id) => api.get(`/expenses/${id}`);
 export const getExpenseCategories = () => api.get('/expenses/categories');
 export const getExpenseStats = (params) => api.get('/expenses/stats', { params });
+export const getExpenseTrendsByCategory = (params) => api.get('/expenses/trends/category', { params });
 export const createExpense = (data) => api.post('/expenses', data);
 export const updateExpense = (id, data) => api.put(`/expenses/${id}`, data);
 export const deleteExpense = (id) => api.delete(`/expenses/${id}`);
@@ -112,6 +116,8 @@ export const deleteInvoice = (id) => api.delete(`/invoices/${id}`);
 // Payment Schedules
 export const getPaymentSchedules = (rentalId) => api.get(`/payment-schedules/${rentalId}`);
 export const getOverdueSchedules = (params) => api.get('/payment-schedules/overdue/all', { params });
+export const getOverduePayments = (params) => api.get('/payment-schedules/overdue', { params });
+export const getUpcomingPayments = (params) => api.get('/payment-schedules/upcoming', { params });
 export const getPendingSchedules = (params) => api.get('/payment-schedules/pending/all', { params });
 export const generateSchedules = (rentalId) => api.post(`/payment-schedules/${rentalId}/generate`);
 export const updateSchedule = (id, data) => api.put(`/payment-schedules/${id}`, data);

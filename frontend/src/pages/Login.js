@@ -239,6 +239,23 @@ const Login = () => {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
+
+          {/* Default Credentials Info */}
+          <div style={{
+            marginTop: '30px',
+            padding: '16px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            border: '1px solid #e9ecef'
+          }}>
+            <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px', fontWeight: '600' }}>
+              Default Credentials:
+            </div>
+            <div style={{ fontSize: '13px', color: '#495057', lineHeight: '1.6' }}>
+              <strong>Admin:</strong> admin / admin123<br />
+              <strong>User:</strong> user1 / user123
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import './Navbar.css';
-import { FaHome, FaBuilding, FaDoorOpen, FaUsers, FaMoneyBillWave, FaFileInvoiceDollar, FaChartBar, FaUsersCog, FaCheckCircle, FaSignOutAlt } from 'react-icons/fa';
+import { FaHome, FaBuilding, FaDoorOpen, FaUsers, FaMoneyBillWave, FaFileInvoiceDollar, FaChartBar, FaUsersCog, FaCheckCircle, FaSignOutAlt, FaFileContract } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 
 const Navbar = () => {
@@ -20,6 +20,7 @@ const Navbar = () => {
     { path: '/', label: 'Dashboard', icon: <FaHome />, roles: ['admin', 'user'] },
     { path: '/buildings', label: 'Buildings', icon: <FaBuilding />, roles: ['admin'] },
     { path: '/flats', label: 'Flats', icon: <FaDoorOpen />, roles: ['admin', 'user'] },
+    { path: '/rentals', label: 'Rentals', icon: <FaFileContract />, roles: ['admin', 'user'] },
     { path: '/tenants', label: 'Tenants', icon: <FaUsers />, roles: ['admin'] },
     { path: '/payments', label: 'Payments', icon: <FaMoneyBillWave />, roles: ['admin'] },
     { path: '/payment-entry', label: 'Payment Entry', icon: <FaMoneyBillWave />, roles: ['admin', 'user'] },

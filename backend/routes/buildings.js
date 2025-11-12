@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
-const { authenticate, authorize } = require('../middleware/auth');
 
 // Get all buildings
-router.get('/', authenticate, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const result = await db.query(
       `SELECT b.*,
@@ -24,7 +23,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Get single building
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query(
@@ -51,8 +50,7 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // Create new building
-router.post('/', authenticate, authorize('admin'), async (req, res) => {
-  const client = await db.pool.connect();
+router.post('/', async (req, res) => {
   try {
     const { name, address, total_flats, contact_number, other_details } = req.body;
 
@@ -61,10 +59,10 @@ router.post('/', authenticate, authorize('admin'), async (req, res) => {
     }
 
     // Start transaction
-    await client.query('BEGIN');
+    await db.query('BEGIN');
 
     // Insert building
-    const buildingResult = await client.query(
+    const buildingResult = await db.query(
       `INSERT INTO buildings (name, address, total_flats, contact_number, other_details)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
@@ -77,7 +75,7 @@ router.post('/', authenticate, authorize('admin'), async (req, res) => {
     const flatInserts = [];
     for (let i = 1; i <= total_flats; i++) {
       flatInserts.push(
-        client.query(
+        db.query(
           `INSERT INTO flats (building_id, flat_number, is_occupied)
            VALUES ($1, $2, $3)`,
           [building.id, i.toString(), false]
@@ -86,20 +84,18 @@ router.post('/', authenticate, authorize('admin'), async (req, res) => {
     }
 
     await Promise.all(flatInserts);
-    await client.query('COMMIT');
+    await db.query('COMMIT');
 
     res.status(201).json(building);
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Building creation error:', err.message, err.stack);
-    res.status(500).json({ error: 'Failed to create building', details: err.message });
-  } finally {
-    client.release();
+    await db.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create building' });
   }
 });
 
 // Update building
-router.put('/:id', authenticate, authorize('admin'), async (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, address, total_flats, contact_number, other_details } = req.body;
@@ -128,7 +124,7 @@ router.put('/:id', authenticate, authorize('admin'), async (req, res) => {
 });
 
 // Delete building
-router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query('DELETE FROM buildings WHERE id = $1 RETURNING *', [id]);

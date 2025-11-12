@@ -4,6 +4,7 @@ import './App.css';
 
 // Context
 import { AuthProvider } from './context/AuthContext';
+import { BuildingProvider } from './context/BuildingContext';
 
 // Components
 import Navbar from './components/Navbar';
@@ -19,6 +20,7 @@ import PaymentEntry from './pages/PaymentEntry';
 import Payments from './pages/Payments';
 import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
+import Rentals from './pages/Rentals';
 
 // Admin Pages
 import UserManagement from './pages/admin/UserManagement';
@@ -40,6 +42,7 @@ const AppContent = () => {
           {/* Protected Routes - All Users */}
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/flats" element={<ProtectedRoute><Flats /></ProtectedRoute>} />
+          <Route path="/rentals" element={<ProtectedRoute><Rentals /></ProtectedRoute>} />
           <Route path="/new-entry" element={<ProtectedRoute><NewEntry /></ProtectedRoute>} />
           <Route path="/payment-entry" element={<ProtectedRoute><PaymentEntry /></ProtectedRoute>} />
           <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
@@ -68,7 +71,9 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppContent />
+        <BuildingProvider>
+          <AppContent />
+        </BuildingProvider>
       </AuthProvider>
     </Router>
   );
